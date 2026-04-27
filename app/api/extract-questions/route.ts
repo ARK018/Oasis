@@ -94,8 +94,15 @@ Return ONLY a valid JSON object — no markdown, no explanation, no code fences:
     ],
   });
 
-  const text = response.text ?? '';
-  const match = text.match(/\{[\s\S]*\}/);
+  // Filter out thinking parts — only use the actual response text
+  type Part = { text?: string; thought?: boolean };
+  const parts = (response.candidates?.[0]?.content?.parts ?? []) as Part[];
+  const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('') || response.text || '';
+
+  // Extract JSON — search specifically for {"questions": to skip any preamble
+  const jsonStart = text.indexOf('{"questions"');
+  const searchText = jsonStart !== -1 ? text.slice(jsonStart) : text;
+  const match = searchText.match(/\{[\s\S]*\}/);
   if (!match) {
     return NextResponse.json({ questions: [] });
   }
