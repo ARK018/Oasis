@@ -93,17 +93,24 @@ export async function POST(request: NextRequest) {
 Here is the complete syllabus for this subject — use it to accurately classify each question into the correct module:
 ${syllabusContext}
 
-For every question:
-1. Extract the COMPLETE question text (include all sub-parts)
-2. Find the marks assigned (look for patterns like "[10]", "10 marks", "(10)", "10 M")
-3. Match the question to the most relevant module by comparing the question topic against the module name and its topics list
-4. Use the exact module ID string (e.g. "m1", "m2")
-5. If a question clearly doesn't fit any module, use null for moduleId
+CRITICAL RULES for extraction:
+
+1. SUB-QUESTIONS MUST BE SPLIT: If a question has sub-parts (a, b, c, d… or i, ii, iii… or 1, 2, 3…), create a SEPARATE entry for EACH sub-part. Never merge multiple sub-questions into one entry.
+   - "Q1 a. Explain X  b. Explain Y  c. Explain Z" → THREE separate entries: "1a. Explain X", "1b. Explain Y", "1c. Explain Z"
+
+2. CLASSIFY EACH SUB-QUESTION INDEPENDENTLY: Even if sub-parts belong to the same question number, each sub-part covers a different topic and must be matched to its own module separately.
+
+3. MARKS PER SUB-QUESTION: Look for marks next to each sub-part (e.g. "[5]", "5 marks"). If marks are only given for the whole question, divide equally among sub-parts.
+
+4. MODULE MATCHING: Compare the topic of each individual sub-question against the module names and topics list. Use the exact module ID string (e.g. "m1", "m2"). Use null only if no module fits.
+
+5. QUESTION TEXT: Include the question number/letter prefix (e.g. "1a.", "Q2b.") in the question text so it can be identified.
 
 Return ONLY a valid JSON object — no markdown, no explanation, no code fences:
 {"questions": [
-  {"moduleId": "m1", "question": "Full question text here.", "marks": 10},
-  {"moduleId": null, "question": "Question that doesn't fit a module.", "marks": 4}
+  {"moduleId": "m1", "question": "1a. Explain the concept of a distributed ledger and its significance in blockchain technology.", "marks": 4},
+  {"moduleId": "m2", "question": "1b. Explain the Unspent Transaction Output in Bitcoin.", "marks": 4},
+  {"moduleId": "m3", "question": "1c. What are Ethereum Wallets? How are Ethereum accounts created using Metamask?", "marks": 4}
 ]}`;
 
   let text: string;

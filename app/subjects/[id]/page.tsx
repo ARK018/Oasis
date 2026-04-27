@@ -10,6 +10,7 @@ import { UploadSyllabusDrawer } from '@/components/drawers/upload-syllabus-drawe
 import { AddPaperDrawer } from '@/components/drawers/add-paper-drawer';
 import { EditRowDrawer } from '@/components/drawers/edit-row-drawer';
 import { C } from '@/lib/theme';
+import { downloadPDF, downloadDocx } from '@/lib/download';
 import type { Question } from '@/lib/types';
 
 export default function SubjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +23,7 @@ export default function SubjectPage({ params }: { params: Promise<{ id: string }
   const [showPaper, setShowPaper] = useState(false);
   const [editQ, setEditQ] = useState<Question | null>(null);
   const [dlOpen, setDlOpen] = useState(false);
+  const [dlLoading, setDlLoading] = useState(false);
   const [syllabusOpen, setSyllabusOpen] = useState(false);
 
   if (!subject) {
@@ -94,15 +96,24 @@ export default function SubjectPage({ params }: { params: Promise<{ id: string }
             Add Question Paper
           </Btn>
           <div style={{ position: 'relative' }}>
-            <Btn variant="ghost" size="sm" icon="download" onClick={() => setDlOpen(v => !v)}>Download</Btn>
+            <Btn variant="ghost" size="sm" icon="download" disabled={dlLoading || !subject.questions.length} onClick={() => setDlOpen(v => !v)}>
+              {dlLoading ? 'Generating…' : 'Download'}
+            </Btn>
             {dlOpen && (
               <>
                 <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setDlOpen(false)} />
                 <div style={{ position: 'absolute', top: 'calc(100% + 5px)', right: 0, zIndex: 60, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, boxShadow: '0 8px 24px rgba(28,25,22,0.12)', minWidth: 150, overflow: 'hidden' }}>
-                  {['PDF', 'Word (.docx)'].map(label => (
+                  {[
+                    { label: 'PDF', fn: () => downloadPDF(subject) },
+                    { label: 'Word (.docx)', fn: () => downloadDocx(subject) },
+                  ].map(({ label, fn }) => (
                     <button
                       key={label}
-                      onClick={() => { alert(`Downloading as ${label}…`); setDlOpen(false); }}
+                      onClick={async () => {
+                        setDlOpen(false);
+                        setDlLoading(true);
+                        try { await fn(); } finally { setDlLoading(false); }
+                      }}
                       style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 12, fontWeight: 500, color: C.text, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7 }}
                       onMouseEnter={e => (e.currentTarget.style.background = C.bg)}
                       onMouseLeave={e => (e.currentTarget.style.background = 'none')}
