@@ -61,9 +61,13 @@ Rules:
   const parts = (response.candidates?.[0]?.content?.parts ?? []) as Part[];
   const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('') || response.text || '';
 
-  // Extract JSON — search specifically for {"modules": to skip any preamble
-  const jsonStart = text.indexOf('{"modules"');
-  const searchText = jsonStart !== -1 ? text.slice(jsonStart) : text;
+  // Strip markdown code fences the model may add despite instructions
+  const cleaned = text.replace(/```(?:json)?\s*/g, '').trim();
+
+  // Find JSON start — allow any whitespace between { and "modules" key
+  const anchor = cleaned.match(/\{\s*"modules"\s*:/);
+  const jsonStart = anchor?.index ?? cleaned.indexOf('{');
+  const searchText = jsonStart >= 0 ? cleaned.slice(jsonStart) : cleaned;
   const match = searchText.match(/\{[\s\S]*\}/);
   if (!match) {
     return NextResponse.json({ error: 'Could not extract syllabus data' }, { status: 422 });
