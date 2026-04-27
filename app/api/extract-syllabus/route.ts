@@ -56,10 +56,21 @@ Rules:
     ],
   });
 
+  // Log raw response structure for debugging
+  const rawParts = response.candidates?.[0]?.content?.parts ?? [];
+  console.log('[extract-syllabus] parts count:', rawParts.length);
+  rawParts.forEach((p: any, i: number) => {
+    console.log(`[extract-syllabus] part[${i}] thought=${p.thought} textLen=${p.text?.length ?? 0} preview=${p.text?.slice(0, 100)}`);
+  });
+
   // Filter out thinking parts — only use the actual response text
   type Part = { text?: string; thought?: boolean };
-  const parts = (response.candidates?.[0]?.content?.parts ?? []) as Part[];
-  const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('') || response.text || '';
+  const parts = rawParts as Part[];
+  let text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('');
+  if (!text) {
+    try { text = response.text ?? ''; } catch { text = parts.filter(p => p.text).map(p => p.text).join(''); }
+  }
+  console.log('[extract-syllabus] filtered text length:', text.length, 'preview:', text.slice(0, 200));
 
   // Strip markdown code fences the model may add despite instructions
   const cleaned = text.replace(/```(?:json)?\s*/g, '').trim();
@@ -69,7 +80,9 @@ Rules:
   const jsonStart = anchor?.index ?? cleaned.indexOf('{');
   const searchText = jsonStart >= 0 ? cleaned.slice(jsonStart) : cleaned;
   const match = searchText.match(/\{[\s\S]*\}/);
+  console.log('[extract-syllabus] jsonStart:', jsonStart, 'matchLen:', match?.[0]?.length ?? 0);
   if (!match) {
+    console.error('[extract-syllabus] no JSON match found in cleaned text:', cleaned.slice(0, 500));
     return NextResponse.json({ error: 'Could not extract syllabus data' }, { status: 422 });
   }
 
