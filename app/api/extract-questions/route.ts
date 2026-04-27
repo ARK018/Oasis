@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 
-const MODEL = process.env.AI_MODEL || 'gemini-2.0-flash';
+const MODEL = process.env.AI_MODEL || 'gemini-2.5-flash';
 
 interface ExtractedQuestion {
   moduleId: string | null;
@@ -35,12 +35,20 @@ export async function POST(request: NextRequest) {
 
   const response = await ai.models.generateContent({
     model: MODEL,
+    config: {
+      thinkingConfig: {
+        thinkingBudget: -1,
+      },
+    },
     contents: [
       {
-        inlineData: { mimeType, data: imageBase64 },
-      },
-      {
-        text: `Extract all questions from this ${year} exam paper image.
+        role: 'user',
+        parts: [
+          {
+            inlineData: { mimeType, data: imageBase64 },
+          },
+          {
+            text: `Extract all questions from this ${year} exam paper image.
 
 Available modules:
 ${moduleList}
@@ -56,6 +64,8 @@ Return ONLY a valid JSON object — no markdown, no explanation, no code fences:
   {"moduleId": "m1", "question": "Full question text here.", "marks": 10},
   {"moduleId": null, "question": "Question that doesn't fit a module.", "marks": 4}
 ]}`,
+          },
+        ],
       },
     ],
   });
