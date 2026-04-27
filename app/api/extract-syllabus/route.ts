@@ -11,19 +11,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'GOOGLE_API_KEY is not configured' }, { status: 500 });
   }
 
-  let body: { imageBase64: string; mimeType: string; subjectId: string; filename: string; sizeMB: number };
+  let body: { images: Array<{ base64: string; mimeType: string }>; subjectId: string; filename: string; sizeMB: number };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { imageBase64, mimeType, subjectId, filename, sizeMB } = body;
-  if (!imageBase64 || !mimeType || !subjectId) {
-    return NextResponse.json({ error: 'imageBase64, mimeType, and subjectId are required' }, { status: 400 });
+  const { images, subjectId, filename, sizeMB } = body;
+  if (!images?.length || !subjectId) {
+    return NextResponse.json({ error: 'images and subjectId are required' }, { status: 400 });
   }
 
   const ai = new GoogleGenAI({ apiKey });
+
+  const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } }));
 
   const response = await ai.models.generateContent({
     model: MODEL,
@@ -36,11 +38,9 @@ export async function POST(request: NextRequest) {
       {
         role: 'user',
         parts: [
+          ...imageParts,
           {
-            inlineData: { mimeType, data: imageBase64 },
-          },
-          {
-            text: `Analyze this syllabus image and extract all modules/units with their topics and subtopics.
+            text: `Analyze ${images.length > 1 ? `these ${images.length} syllabus pages` : 'this syllabus'} and extract all modules/units with their topics and subtopics.
 
 Return ONLY a valid JSON object — no markdown, no explanation, no code fences:
 {"modules": [{"name": "Module 1 – Topic Name", "topics": ["Topic 1", "Topic 2", "Topic 3"]}]}

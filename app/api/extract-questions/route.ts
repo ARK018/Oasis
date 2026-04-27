@@ -19,8 +19,7 @@ export async function POST(request: NextRequest) {
   }
 
   let body: {
-    imageBase64: string;
-    mimeType: string;
+    images: Array<{ base64: string; mimeType: string }>;
     year: string;
     subjectId: string;
     filename: string;
@@ -32,9 +31,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { imageBase64, mimeType, year, subjectId, filename, sizeMB } = body;
-  if (!imageBase64 || !mimeType || !subjectId) {
-    return NextResponse.json({ error: 'imageBase64, mimeType, and subjectId are required' }, { status: 400 });
+  const { images, year, subjectId, filename, sizeMB } = body;
+  if (!images?.length || !subjectId) {
+    return NextResponse.json({ error: 'images and subjectId are required' }, { status: 400 });
   }
 
   const client = await clientPromise;
@@ -55,6 +54,10 @@ export async function POST(request: NextRequest) {
 
   const ai = new GoogleGenAI({ apiKey });
 
+  const imageParts = images.map(img => ({
+    inlineData: { mimeType: img.mimeType, data: img.base64 },
+  }));
+
   const response = await ai.models.generateContent({
     model: MODEL,
     config: {
@@ -66,11 +69,9 @@ export async function POST(request: NextRequest) {
       {
         role: 'user',
         parts: [
+          ...imageParts,
           {
-            inlineData: { mimeType, data: imageBase64 },
-          },
-          {
-            text: `Extract all questions from this ${year} exam paper image.
+            text: `Extract all questions from this ${year} exam paper${images.length > 1 ? ` (${images.length} pages)` : ''}.
 
 Here is the complete syllabus for this subject — use it to accurately classify each question into the correct module:
 ${syllabusContext}

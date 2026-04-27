@@ -17,7 +17,7 @@ export async function fileToBase64(file: File): Promise<{ base64: string; mimeTy
 
 export async function fileToSmallDataUrl(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file);
-  const maxSize = 500;
+  const maxSize = 400;
   let { width, height } = bitmap;
   if (width > maxSize || height > maxSize) {
     if (width > height) { height = Math.round(height * maxSize / width); width = maxSize; }
@@ -27,7 +27,11 @@ export async function fileToSmallDataUrl(file: File): Promise<string> {
   canvas.width = width;
   canvas.height = height;
   canvas.getContext('2d')!.drawImage(bitmap, 0, 0, width, height);
-  return canvas.toDataURL('image/jpeg', 0.7);
+  return canvas.toDataURL('image/jpeg', 0.65);
+}
+
+export async function filesToBase64(files: File[]): Promise<Array<{ base64: string; mimeType: string }>> {
+  return Promise.all(files.map(fileToBase64));
 }
 
 export function bytesToMB(bytes: number): number {

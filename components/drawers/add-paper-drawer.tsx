@@ -7,7 +7,7 @@ import { DropZone } from '../drop-zone';
 import { Spinner } from '../spinner';
 import { Field } from '../field';
 import { C, inputStyle } from '@/lib/theme';
-import { fileToBase64, bytesToMB } from '@/lib/utils';
+import { filesToBase64, bytesToMB } from '@/lib/utils';
 import type { Subject } from '@/lib/types';
 
 interface Props {
@@ -17,27 +17,28 @@ interface Props {
 }
 
 export function AddPaperDrawer({ subject, onClose, onDone }: Props) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [year, setYear] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handle = async () => {
-    if (!file || !year) return;
+    if (!files.length || !year) return;
     setLoading(true);
     setError('');
     try {
-      const { base64, mimeType } = await fileToBase64(file);
+      const images = await filesToBase64(files);
+      const totalSizeMB = files.reduce((sum, f) => sum + bytesToMB(f.size), 0);
+      const filename = files.map(f => f.name).join(', ');
       const res = await fetch('/api/extract-questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: base64,
-          mimeType,
+          images,
           year,
           subjectId: subject.id,
-          filename: file.name,
-          sizeMB: bytesToMB(file.size),
+          filename,
+          sizeMB: Math.round(totalSizeMB * 100) / 100,
         }),
       });
       if (!res.ok) {
@@ -55,9 +56,14 @@ export function AddPaperDrawer({ subject, onClose, onDone }: Props) {
     <Drawer title={`Add Question Paper — ${subject.name}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <p style={{ fontSize: 12, color: C.textSec, lineHeight: 1.7 }}>
-          Upload a screenshot of the question paper. CrackIt will extract questions and classify them module-wise using the full syllabus.
+          Upload one or more screenshots of the question paper (one per page). CrackIt will extract and classify questions using the full syllabus.
         </p>
-        <DropZone label="Drop question paper image here or click to browse" onFile={setFile} file={file} />
+        <DropZone
+          multiple
+          label="Drop question paper pages here or click to browse"
+          onFiles={setFiles}
+          files={files}
+        />
         <Field label="Exam Year">
           <input
             value={year}
@@ -67,7 +73,7 @@ export function AddPaperDrawer({ subject, onClose, onDone }: Props) {
             style={inputStyle}
           />
         </Field>
-        {loading && <Spinner message="Extracting & classifying questions using syllabus…" />}
+        {loading && <Spinner message={`Extracting questions from ${files.length} page${files.length > 1 ? 's' : ''} using syllabus…`} />}
         {error && (
           <div style={{ padding: '10px 14px', background: '#FFF1F0', border: '1px solid #FECACA', borderRadius: 8, fontSize: 12, color: '#DC2626' }}>
             {error}
@@ -75,8 +81,8 @@ export function AddPaperDrawer({ subject, onClose, onDone }: Props) {
         )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn disabled={!file || !year || loading} onClick={handle} icon="upload">
-            {loading ? 'Processing…' : 'Extract Questions'}
+          <Btn disabled={!files.length || !year || loading} onClick={handle} icon="upload">
+            {loading ? 'Processing…' : `Extract Questions${files.length > 1 ? ` (${files.length} pages)` : ''}`}
           </Btn>
         </div>
       </div>
