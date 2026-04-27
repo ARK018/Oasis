@@ -1,10 +1,10 @@
-import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import clientPromise from '@/lib/mongodb';
 import type { Module, Question } from '@/lib/types';
 
-const MODEL = process.env.AI_MODEL || 'gemini-2.5-flash';
+const NEBIUS_MODEL = process.env.NEBIUS_MODEL || 'Qwen/Qwen2.5-VL-72B-Instruct';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 interface ExtractedQuestion {
   moduleId: string | null;
@@ -12,12 +12,52 @@ interface ExtractedQuestion {
   marks: number;
 }
 
-export async function POST(request: NextRequest) {
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'GOOGLE_API_KEY is not configured' }, { status: 500 });
+async function extractText(images: Array<{ base64: string; mimeType: string }>, prompt: string): Promise<string> {
+  const nebiusKey = process.env.NEBIUS_API_KEY;
+  const googleKey = process.env.GOOGLE_API_KEY;
+
+  if (nebiusKey) {
+    const { default: OpenAI } = await import('openai');
+    const client = new OpenAI({ apiKey: nebiusKey, baseURL: 'https://api.studio.nebius.ai/v1/' });
+
+    const imageContent = images.map(img => ({
+      type: 'image_url' as const,
+      image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+    }));
+
+    const res = await client.chat.completions.create({
+      model: NEBIUS_MODEL,
+      messages: [{ role: 'user', content: [...imageContent, { type: 'text', text: prompt }] }],
+      max_tokens: 8192,
+    });
+    return res.choices[0]?.message?.content ?? '';
   }
 
+  if (googleKey) {
+    const { GoogleGenAI } = await import('@google/genai');
+    const ai = new GoogleGenAI({ apiKey: googleKey });
+    const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } }));
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      config: { thinkingConfig: { thinkingBudget: 0 } },
+      contents: [{ role: 'user', parts: [...imageParts, { text: prompt }] }],
+    });
+    return response.text ?? '';
+  }
+
+  throw new Error('No AI provider configured. Set NEBIUS_API_KEY or GOOGLE_API_KEY.');
+}
+
+function extractJSON(text: string, key: string): string | null {
+  const cleaned = text.replace(/```(?:json)?\s*/g, '').trim();
+  const anchor = cleaned.match(new RegExp(`\\{\\s*"${key}"\\s*:`));
+  const start = anchor?.index ?? cleaned.indexOf('{');
+  if (start < 0) return null;
+  const match = cleaned.slice(start).match(/\{[\s\S]*\}/);
+  return match?.[0] ?? null;
+}
+
+export async function POST(request: NextRequest) {
   let body: {
     images: Array<{ base64: string; mimeType: string }>;
     year: string;
@@ -45,33 +85,10 @@ export async function POST(request: NextRequest) {
 
   const modules: Module[] = subject.modules || [];
   const syllabusContext = modules.length
-    ? JSON.stringify(
-        modules.map(m => ({ id: m.id, name: m.name, topics: m.topics || [] })),
-        null,
-        2
-      )
+    ? JSON.stringify(modules.map(m => ({ id: m.id, name: m.name, topics: m.topics || [] })), null, 2)
     : '(no syllabus available — use null for all questions)';
 
-  const ai = new GoogleGenAI({ apiKey });
-
-  const imageParts = images.map(img => ({
-    inlineData: { mimeType: img.mimeType, data: img.base64 },
-  }));
-
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    config: {
-      thinkingConfig: {
-        thinkingBudget: -1,
-      },
-    },
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          ...imageParts,
-          {
-            text: `Extract all questions from this ${year} exam paper${images.length > 1 ? ` (${images.length} pages)` : ''}.
+  const prompt = `Extract all questions from this ${year} exam paper${images.length > 1 ? ` (${images.length} pages)` : ''}.
 
 Here is the complete syllabus for this subject — use it to accurately classify each question into the correct module:
 ${syllabusContext}
@@ -87,33 +104,24 @@ Return ONLY a valid JSON object — no markdown, no explanation, no code fences:
 {"questions": [
   {"moduleId": "m1", "question": "Full question text here.", "marks": 10},
   {"moduleId": null, "question": "Question that doesn't fit a module.", "marks": 4}
-]}`,
-          },
-        ],
-      },
-    ],
-  });
+]}`;
 
-  // Filter out thinking parts — only use the actual response text
-  type Part = { text?: string; thought?: boolean };
-  const parts = (response.candidates?.[0]?.content?.parts ?? []) as Part[];
-  const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('') || response.text || '';
+  let text: string;
+  try {
+    text = await extractText(images, prompt);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'AI provider error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 
-  // Strip markdown code fences the model may add despite instructions
-  const cleaned = text.replace(/```(?:json)?\s*/g, '').trim();
-
-  // Find JSON start — allow any whitespace between { and "questions" key
-  const anchor = cleaned.match(/\{\s*"questions"\s*:/);
-  const jsonStart = anchor?.index ?? cleaned.indexOf('{');
-  const searchText = jsonStart >= 0 ? cleaned.slice(jsonStart) : cleaned;
-  const match = searchText.match(/\{[\s\S]*\}/);
-  if (!match) {
+  const jsonStr = extractJSON(text, 'questions');
+  if (!jsonStr) {
     return NextResponse.json({ questions: [] });
   }
 
   let extracted: ExtractedQuestion[];
   try {
-    const parsed = JSON.parse(match[0]);
+    const parsed = JSON.parse(jsonStr);
     extracted = Array.isArray(parsed.questions) ? parsed.questions : [];
   } catch {
     return NextResponse.json({ questions: [] });
