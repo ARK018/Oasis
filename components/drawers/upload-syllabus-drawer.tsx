@@ -12,7 +12,7 @@ import type { Subject } from '@/lib/types';
 interface Props {
   subject: Subject;
   onClose: () => void;
-  onDone: (moduleNames: string[], filename: string, sizeMB: number) => void;
+  onDone: () => void;
 }
 
 export function UploadSyllabusDrawer({ subject, onClose, onDone }: Props) {
@@ -29,12 +29,19 @@ export function UploadSyllabusDrawer({ subject, onClose, onDone }: Props) {
       const res = await fetch('/api/extract-syllabus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64, mimeType }),
+        body: JSON.stringify({
+          imageBase64: base64,
+          mimeType,
+          subjectId: subject.id,
+          filename: file.name,
+          sizeMB: bytesToMB(file.size),
+        }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const { modules } = await res.json() as { modules: string[] };
-      if (!modules.length) throw new Error('No modules detected. Please ensure the image shows a clear syllabus.');
-      onDone(modules, file.name, bytesToMB(file.size));
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Extraction failed. Please try again.');
+      }
+      onDone();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Extraction failed. Please try again.');
       setLoading(false);
@@ -45,14 +52,20 @@ export function UploadSyllabusDrawer({ subject, onClose, onDone }: Props) {
     <Drawer title={`Upload Syllabus — ${subject.name}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <p style={{ fontSize: 12, color: C.textSec, lineHeight: 1.7 }}>
-          Upload an image of the syllabus. CrackIt will extract module names and structure automatically using AI.
+          Upload an image of the syllabus. CrackIt will extract modules, topics, and structure automatically using AI.
         </p>
         <DropZone label="Drop syllabus image here or click to browse" onFile={setFile} file={file} />
-        {loading && <Spinner message="Extracting modules from syllabus…" />}
-        {error && <div style={{ padding: '10px 14px', background: '#FFF1F0', border: '1px solid #FECACA', borderRadius: 8, fontSize: 12, color: '#DC2626' }}>{error}</div>}
+        {loading && <Spinner message="Extracting syllabus structure…" />}
+        {error && (
+          <div style={{ padding: '10px 14px', background: '#FFF1F0', border: '1px solid #FECACA', borderRadius: 8, fontSize: 12, color: '#DC2626' }}>
+            {error}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn disabled={!file || loading} onClick={handle} icon="upload">{loading ? 'Processing…' : 'Upload & Extract'}</Btn>
+          <Btn disabled={!file || loading} onClick={handle} icon="upload">
+            {loading ? 'Processing…' : 'Upload & Extract'}
+          </Btn>
         </div>
       </div>
     </Drawer>

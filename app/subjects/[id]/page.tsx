@@ -15,14 +15,14 @@ import type { Question } from '@/lib/types';
 export default function SubjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { subjects, updateSubject } = useStore();
-  const subjectId = parseInt(id, 10);
-  const subject = subjects.find(s => s.id === subjectId);
+  const { subjects, updateSubject, refreshSubject } = useStore();
+  const subject = subjects.find(s => s.id === id);
 
   const [showSyllabus, setShowSyllabus] = useState(false);
   const [showPaper, setShowPaper] = useState(false);
   const [editQ, setEditQ] = useState<Question | null>(null);
   const [dlOpen, setDlOpen] = useState(false);
+  const [syllabusOpen, setSyllabusOpen] = useState(false);
 
   if (!subject) {
     return (
@@ -37,32 +37,22 @@ export default function SubjectPage({ params }: { params: Promise<{ id: string }
     );
   }
 
-  const handleSyllabusDone = (moduleNames: string[], filename: string, sizeMB: number) => {
-    const modules = moduleNames.map((n, i) => ({ id: `m${i + 1}`, name: n }));
-    updateSubject({ ...subject, syllabusUploaded: true, modules, syllabusFilename: filename, syllabusUploadedAt: new Date().toISOString().slice(0, 10), syllabusSizeMB: sizeMB });
+  const handleSyllabusDone = async () => {
+    await refreshSubject(subject.id);
     setShowSyllabus(false);
   };
 
-  const handlePaperDone = (filename: string, year: string, sizeMB: number, newQs: Omit<Question, 'id' | 'sr'>[]) => {
-    const papers = [...subject.papers, { id: `p${Date.now()}`, year, filename, uploadedAt: new Date().toISOString().slice(0, 10), sizeMB }];
-    const existing = [...subject.questions];
-    const perMod: Record<string, number> = {};
-    existing.forEach(q => { const k = q.module || '__'; perMod[k] = (perMod[k] || 0) + 1; });
-    const added: Question[] = newQs.map(q => {
-      const k = q.module || '__';
-      perMod[k] = (perMod[k] || 0) + 1;
-      return { id: `q_${Date.now()}_${Math.random().toString(36).slice(2)}`, ...q, sr: perMod[k] };
-    });
-    updateSubject({ ...subject, papers, questions: [...existing, ...added] });
+  const handlePaperDone = async () => {
+    await refreshSubject(subject.id);
     setShowPaper(false);
   };
 
-  const handleSaveQ = (updated: Question) => {
-    updateSubject({ ...subject, questions: subject.questions.map(q => q.id === updated.id ? updated : q) });
+  const handleSaveQ = async (updated: Question) => {
+    await updateSubject({ ...subject, questions: subject.questions.map(q => q.id === updated.id ? updated : q) });
   };
 
-  const handleDeleteQ = (qId: string) => {
-    updateSubject({ ...subject, questions: subject.questions.filter(q => q.id !== qId) });
+  const handleDeleteQ = async (qId: string) => {
+    await updateSubject({ ...subject, questions: subject.questions.filter(q => q.id !== qId) });
   };
 
   const grouped: Record<string, Question[]> = {};
@@ -108,11 +98,7 @@ export default function SubjectPage({ params }: { params: Promise<{ id: string }
             {dlOpen && (
               <>
                 <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setDlOpen(false)} />
-                <div style={{
-                  position: 'absolute', top: 'calc(100% + 5px)', right: 0, zIndex: 60,
-                  background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9,
-                  boxShadow: '0 8px 24px rgba(28,25,22,0.12)', minWidth: 150, overflow: 'hidden',
-                }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 5px)', right: 0, zIndex: 60, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, boxShadow: '0 8px 24px rgba(28,25,22,0.12)', minWidth: 150, overflow: 'hidden' }}>
                   {['PDF', 'Word (.docx)'].map(label => (
                     <button
                       key={label}
@@ -137,6 +123,41 @@ export default function SubjectPage({ params }: { params: Promise<{ id: string }
           <span style={{ fontSize: 12, color: '#92400E' }}>
             <strong>Syllabus not uploaded.</strong> Upload the syllabus first to detect modules before adding question papers.
           </span>
+        </div>
+      )}
+
+      {subject.syllabusUploaded && subject.modules.length > 0 && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, marginBottom: 18, overflow: 'hidden' }}>
+          <button
+            onClick={() => setSyllabusOpen(v => !v)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="book" size={13} color={subject.color} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>Syllabus</span>
+              <span style={{ fontSize: 11, color: C.textMuted }}>{subject.modules.length} modules</span>
+            </div>
+            <Icon name="chevronLeft" size={12} color={C.textMuted} />
+          </button>
+
+          {syllabusOpen && (
+            <div style={{ borderTop: `1px solid ${C.border}`, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {subject.modules.map(m => (
+                <div key={m.id}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>{m.name}</div>
+                  {m.topics && m.topics.length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {m.topics.map((t, i) => (
+                        <li key={i} style={{ fontSize: 11, color: C.textSec, lineHeight: 1.5 }}>{t}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic' }}>No topics listed</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

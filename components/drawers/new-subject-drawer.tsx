@@ -10,13 +10,21 @@ const COLORS = ['#D97757', '#7C6FF7', '#E8A528', '#3B82F6', '#F472B6', '#34D399'
 
 interface Props {
   onClose: () => void;
-  onCreate: (data: { name: string; code: string; color: string }) => void;
+  onCreate: (data: { name: string; code: string; color: string }) => Promise<void>;
 }
 
 export function NewSubjectDrawer({ onClose, onCreate }: Props) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [color, setColor] = useState(COLORS[0]);
+  const [loading, setLoading] = useState(false);
+
+  const handle = async () => {
+    if (!name.trim()) return;
+    setLoading(true);
+    await onCreate({ name: name.trim(), code: code.trim(), color });
+    onClose();
+  };
 
   return (
     <Drawer title="New Subject" onClose={onClose}>
@@ -30,13 +38,19 @@ export function NewSubjectDrawer({ onClose, onCreate }: Props) {
         <Field label="Color">
           <div style={{ display: 'flex', gap: 7 }}>
             {COLORS.map(c => (
-              <div key={c} onClick={() => setColor(c)} style={{ width: 26, height: 26, borderRadius: 6, background: c, cursor: 'pointer', outline: color === c ? `2.5px solid ${c}` : '2.5px solid transparent', outlineOffset: 2 }} />
+              <div
+                key={c}
+                onClick={() => setColor(c)}
+                style={{ width: 26, height: 26, borderRadius: 6, background: c, cursor: 'pointer', outline: color === c ? `2.5px solid ${c}` : '2.5px solid transparent', outlineOffset: 2 }}
+              />
             ))}
           </div>
         </Field>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn disabled={!name.trim()} onClick={() => { onCreate({ name: name.trim(), code: code.trim(), color }); onClose(); }}>Create Subject</Btn>
+          <Btn disabled={!name.trim() || loading} onClick={handle}>
+            {loading ? 'Creating…' : 'Create Subject'}
+          </Btn>
         </div>
       </div>
     </Drawer>

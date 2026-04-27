@@ -1,6 +1,7 @@
 export interface Module {
   id: string;
   name: string;
+  topics?: string[];
 }
 
 export interface Paper {
@@ -22,7 +23,7 @@ export interface Question {
 }
 
 export interface Subject {
-  id: number;
+  id: string;
   name: string;
   code: string;
   color: string;
@@ -37,7 +38,7 @@ export interface Subject {
 
 export interface LibraryFile {
   id: string;
-  subjectId: number;
+  subjectId: string;
   subjectName: string;
   subjectColor: string;
   type: 'syllabus' | 'paper';
