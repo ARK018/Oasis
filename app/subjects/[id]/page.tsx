@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { ModuleTable } from '@/components/module-table';
@@ -12,10 +12,11 @@ import { EditRowDrawer } from '@/components/drawers/edit-row-drawer';
 import { C } from '@/lib/theme';
 import type { Question } from '@/lib/types';
 
-export default function SubjectPage({ params }: { params: { id: string } }) {
+export default function SubjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
   const { subjects, updateSubject } = useStore();
-  const subjectId = parseInt(params.id, 10);
+  const subjectId = parseInt(id, 10);
   const subject = subjects.find(s => s.id === subjectId);
 
   const [showSyllabus, setShowSyllabus] = useState(false);
